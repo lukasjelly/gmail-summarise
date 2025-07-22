@@ -103,12 +103,15 @@ function uploadPdfAndGetUri(att) {
 function getGeminiSummary(fromEmail, subject, body, fileUri) {
   Logger.log("Calling Gemini API for summary...");
   var apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + GEMINI_API_KEY;
-  var parts = [
-    { "text": "Summarise the key points of this email." },
-    { "text": "From: " + fromEmail },
-    { "text": "Subject: " + subject },
-    { "text": "Email Body: " + body }
-  ];
+  var promptText = "Summarise the key points of this email and its PDF attachment (if present). " +
+    "Focus on making the summary concise, clear, and easy to scan while still retaining key information." +
+    "For the PDF document (if present), output a summary of each page" +
+    "Format your output using email style formatting." +
+    "\n\nEmail details:\n" +
+    "From: " + fromEmail + "\n" +
+    "Subject: " + subject + "\n" +
+    "Body:\n" + body;
+  var parts = [{ "text": promptText }];
   if (fileUri) {
     parts.push({
       "file_data": {
@@ -118,7 +121,7 @@ function getGeminiSummary(fromEmail, subject, body, fileUri) {
     });
     Logger.log("PDF fileUri included in Gemini request.");
   }
-  var payload = { "contents": [ { "parts": parts } ] };
+  var payload = { "contents": [{ "parts": parts }] };
   var options = {
     method: "post",
     contentType: "application/json",
@@ -132,11 +135,42 @@ function getGeminiSummary(fromEmail, subject, body, fileUri) {
 
 function formatSummary(gptResponse) {
   Logger.log("Formatting Gemini response...");
-  return gptResponse
+  let html = gptResponse
+    // Headings
+    .replace(/^#### (.*)$/gim, '<h4>$1</h4>')
+    .replace(/^### (.*)$/gim, '<h3>$1</h3>')
+    .replace(/^## (.*)$/gim, '<h2>$1</h2>')
+    .replace(/^# (.*)$/gim, '<h1>$1</h1>')
+    // Bold
     .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\n\n/g, "<br><br>")
-    .replace(/\* (.*?)\n/g, "<li>$1</li>")
-    .replace(/(<li>.*?<\/li>)/g, "<ul>$1</ul>");
+    // Links [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    // Bullet points
+    .replace(/^\s*[-*] (.*)$/gim, '<li>$1</li>')
+    // Numbered lists
+    .replace(/^\s*\d+\.\s(.*)$/gim, '<li>$1</li>');
+
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/(<li>.*?<\/li>)+/gs, match => `<ul>${match}</ul>`);
+
+  // Remove line breaks inside lists
+  html = html.replace(/(<ul>[\s\S]*?<\/ul>)/g, m => m.replace(/<br\s*\/?>/g, ''));
+
+  // Paragraphs: wrap non-list, non-heading blocks in <p>
+  html = html
+    .split(/\n{2,}/)
+    .map(block => {
+      if (/^(\s*<(ul|h\d|ol|li|\/ul|\/ol|\/li|blockquote|pre|table|tr|td|th|\/table|\/tr|\/td|\/th)>)/i.test(block.trim())) {
+        return block;
+      }
+      return `<p>${block.trim()}</p>`;
+    })
+    .join('');
+
+  // Remove single line breaks (optional, as <p> handles spacing)
+  html = html.replace(/<br\s*\/?>/g, '');
+
+  return html;
 }
 
 function sendSummaryEmail(fromEmail, subject, originalBody, formattedSummary, attachment) {
@@ -144,7 +178,7 @@ function sendSummaryEmail(fromEmail, subject, originalBody, formattedSummary, at
   var emailSubject = "Summary of " + subject;
   var emailBody = "<H1>AI Key Points</H1>" + formattedSummary;
   emailBody += "<H1>Original Email</H1>From: " + fromEmail + "<br>Subject: " + subject + "<br>" + originalBody;
-  var mailOptions = {htmlBody: emailBody};
+  var mailOptions = { htmlBody: emailBody };
   if (attachment) {
     mailOptions.attachments = [attachment];
     Logger.log("PDF attachment included in summary email: " + attachment.getName());
