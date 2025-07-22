@@ -19,6 +19,7 @@ function CheckForNewEmailToProcess() {
     for (const message of messages) {
       Logger.log("Processing email with subject: " + message.getSubject());
       processEmail(message);
+      message.markRead();
       thread.removeLabel(GmailApp.getUserLabelByName(LABEL_NAME));
       Logger.log("Removed label '" + LABEL_NAME + "' from thread.");
     }
@@ -105,6 +106,7 @@ function getGeminiSummary(fromEmail, subject, body, fileUri) {
   var apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + GEMINI_API_KEY;
   var promptText = "Summarise the key points of this email and its PDF attachment (if present). " +
     "Focus on making the summary concise, clear, and easy to scan while still retaining key information." +
+    "Do NOT include any introductory phrases or repeat the sender, recipient, or subject. " +
     "For the PDF document (if present), output a summary of each page" +
     "Format your output using email style formatting." +
     "\n\nEmail details:\n" +
