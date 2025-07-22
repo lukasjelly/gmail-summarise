@@ -107,6 +107,7 @@ function getGeminiSummary(fromEmail, subject, body, fileUri) {
   var promptText = "Summarise the key points of this email and its PDF attachment (if present). " +
     "Focus on making the summary concise, clear, and easy to scan while still retaining key information." +
     "Do NOT include any introductory phrases or repeat the sender, recipient, or subject. " +
+    "Put the name of the school in a bold title at the beginning of the summary using the format: Summary of Email from <school_name>." +
     "For the PDF document (if present), output a summary of each page" +
     "Format your output using email style formatting." +
     "\n\nEmail details:\n" +
